@@ -1,0 +1,17 @@
+{
+  "functions": [{
+    "source": ".firebase-functions",
+    "codebase": "correction-ai",
+    "runtime": "nodejs22",
+    "ignore": ["node_modules", ".git", ".env*", "*.log"]
+  }],
+  "hosting": {
+    "public": "client/dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "headers": [{ "source": "**", "headers": [
+      { "key": "X-Content-Type-Options", "value": "nosniff" },
+      { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+    ] }]
+  }
+}

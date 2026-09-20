@@ -1,7 +1,9 @@
+const API_BASE = (import.meta.env?.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
 export async function analyzeTranscript(transcript, duration, context, mode = 'supportive') {
   let response;
   try {
-    response = await fetch('/api/analyze', {
+    response = await fetch(`${API_BASE}/api/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transcript, duration, context, mode }),
@@ -24,7 +26,7 @@ export async function transcribeAudio(audio) {
   if (audio.size > 12 * 1024 * 1024) throw new Error('This recording is too large. Record a shorter session (under 12 MB).');
   let response;
   try {
-    response = await fetch('/api/transcribe', {
+    response = await fetch(`${API_BASE}/api/transcribe`, {
       method: 'POST', headers: { 'Content-Type': audio.type || 'audio/webm' },
       body: audio, signal: AbortSignal.timeout(100000)
     });

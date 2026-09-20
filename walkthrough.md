@@ -21,3 +21,9 @@ The retained seven-second browser recording successfully transcribed and reached
 Added one bounded automatic retry for transient transport failures and HTTP 500/502/503/504. Quota and authentication errors are not retried. Each attempt has a 45-second timeout; the frontend allows 100 seconds. Final failures distinguish transport, timeout and invalid provider responses. Diagnostic logs contain only failure codes, audio MIME type and byte count, never audio or credentials.
 
 Regression suite: 11 tests pass, including retained-body retries, quota/auth handling and bounded failure. Run `node --test server/index.test.js server/transcriptionRequest.test.js client/src/utils/sessionStorage.test.js`.
+
+## Firebase deployment status — 2026-09-15
+
+Created Firebase project `correction-ai-chinmmayi`. Prepared Hosting configuration, Node 22 Functions v2 wrapper, isolated source packaging, Secret Manager binding, production API URL, request-size limits and per-instance throttling. All 14 tests, lint and production build pass. Wrapper export inspection confirms the API function with a 120-second timeout.
+
+Deployment is not live yet. Firebase rejected the Secret Manager setup because the project is on the Spark plan. The owner must enable Blaze at https://console.firebase.google.com/project/correction-ai-chinmmayi/usage/details before the secret and function can be deployed. The Gemini key has not been uploaded to Firebase. Hosting has not been published with an unavailable backend. See firebase/README.md for the prepared deployment commands.

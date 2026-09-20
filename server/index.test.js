@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createApp } = require('./index');
 const { once } = require('node:events');
+const express = require('express');
 const analysis = {
   overallScore: 80,
   metrics: Object.fromEntries(['clarity','storytelling','engagement','concision','wit','delivery','structure','adaptability'].map(k => [k, { score: 80, reason: 'Specific text feedback' }])),
@@ -9,8 +10,8 @@ const analysis = {
   details: Object.fromEntries(['storyOpportunity','witOpportunity','bestMoment','weakestMoment','betterOpening','betterClosing','memorableLine'].map(k => [k, 'Text feedback'])),
   nextExercise: 'Practice a shorter closing.', coachNotes: 'Transcript only.'
 };
-async function withServer(options, run) {
-  const server = createApp(options).listen(0, '127.0.0.1');
+async function withServer(options, run, wrap = app => app) {
+  const server = wrap(createApp(options)).listen(0, '127.0.0.1');
   await once(server, 'listening');
   try { await run(`http://127.0.0.1:${server.address().port}`); }
   finally { await new Promise(resolve => server.close(resolve)); }
@@ -85,5 +86,74 @@ test('audio validation, missing key and silence are explicit', async () => {
   });
   await withServer({ apiKey: 'test-key', fetchImpl: async () => Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: '{"transcript":""}' }] } }] }) }, async url => {
     assert.equal((await fetch(url + '/api/transcribe', { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: 'silence' })).status, 422);
+  });
+});
+
+test('public deployment limits pre-parsed Firebase bodies before sending them to AI', async () => {
+  let providerCalls = 0;
+  const emulateFirebaseParser = app => {
+    const verify = (req, res, buffer) => { req.rawBody = buffer; };
+    return express().use(express.json({ limit: '32mb', verify }))
+      .use(express.raw({ type: '*/*', limit: '32mb', verify })).use(app);
+  };
+  await withServer({ apiKey: 'test-key', publicDeployment: true, fetchImpl: async (url, init) => {
+    providerCalls++;
+    const isAudio = JSON.parse(init.body).contents[0].parts[0].inlineData;
+    const result = isAudio ? { transcript: 'A test speech.' } : analysis;
+    return Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(result) }] } }] });
+  } }, async url => {
+    for (const [bytes, status] of [[12 * 1024 * 1024, 200], [12 * 1024 * 1024 + 1, 413]]) {
+      const response = await fetch(url + '/API/TRANSCRIBE/', {
+        method: 'POST', headers: { 'Content-Type': 'audio/webm' }, body: Buffer.alloc(bytes, 1)
+      });
+      assert.equal(response.status, status);
+      if (status === 413) assert.match((await response.json()).error, /Recording is too large/);
+    }
+    for (const [bytes, status] of [[64 * 1024, 200], [64 * 1024 + 1, 413]]) {
+      const response = await fetch(url + '/api/analyze', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: 'A speech.' }).padEnd(bytes, ' ')
+      });
+      assert.equal(response.status, status);
+    }
+    assert.equal(providerCalls, 2);
+  }, emulateFirebaseParser);
+});
+
+test('public deployment shares a bounded quota across AI endpoints and permits retry after reset', async t => {
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  let providerCalls = 0;
+  await withServer({ apiKey: 'test-key', publicDeployment: true, allowedOrigins: ['https://example.web.app'], fetchImpl: async (url, init) => {
+    providerCalls++;
+    const isAudio = JSON.parse(init.body).contents[0].parts[0].inlineData;
+    const result = isAudio ? { transcript: 'A test speech.' } : analysis;
+    return Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(result) }] } }] });
+  } }, async url => {
+    for (let i = 0; i < 20; i++) {
+      const response = i % 2 === 0 ? await post(url, { transcript: 'A speech.' })
+        : await fetch(url + '/API/TRANSCRIBE/', { method: 'POST', headers: { 'Content-Type': 'audio/webm' }, body: 'audio' });
+      assert.equal(response.status, 200);
+    }
+    now += 15000;
+    const blocked = await fetch(url + '/API/ANALYZE/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://example.web.app' },
+      body: JSON.stringify({ transcript: 'A speech.' })
+    });
+    assert.equal(blocked.status, 429);
+    assert.equal(blocked.headers.get('Retry-After'), '45');
+    assert.equal(blocked.headers.get('Access-Control-Allow-Origin'), 'https://example.web.app');
+    assert.match((await blocked.json()).error, /still available/);
+    assert.equal(providerCalls, 20);
+    assert.equal((await fetch(url + '/api/health')).status, 200);
+    now += 45000;
+    assert.equal((await post(url, { transcript: 'Retry speech.' })).status, 200);
+    assert.equal(providerCalls, 21);
+  });
+});
+
+test('local defaults do not enable the public deployment quota', async () => {
+  await withServer({ apiKey: '' }, async url => {
+    for (let i = 0; i < 21; i++) assert.equal((await post(url, { transcript: 'A speech.' })).status, 503);
   });
 });

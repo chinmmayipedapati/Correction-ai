@@ -1,0 +1,13 @@
+{
+  "name": "correction-ai-functions",
+  "private": true,
+  "version": "1.0.0",
+  "main": "firebase.js",
+  "engines": { "node": "22" },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "firebase-functions": "^7.0.0"
+  }
+}

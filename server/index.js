@@ -2,39 +2,39 @@ require('dotenv').config({ path: require('node:path').join(__dirname, '.env') })
 const express = require('express');
 const cors = require('cors');
 const { transcriptionRequest } = require('./transcriptionRequest');
-const metricNames = ['clarity', 'storytelling', 'engagement', 'concision', 'wit', 'delivery', 'structure', 'adaptability'];
-const detailNames = ['storyOpportunity', 'witOpportunity', 'bestMoment', 'weakestMoment', 'betterOpening', 'betterClosing', 'memorableLine'];
-const scoreSchema = { type: 'NUMBER', minimum: 0, maximum: 100 };
-const stringsSchema = { type: 'ARRAY', items: { type: 'STRING' } };
-const responseSchema = {
-  type: 'OBJECT',
-  properties: {
-    overallScore: scoreSchema,
-    metrics: { type: 'OBJECT', properties: Object.fromEntries(metricNames.map(name => [name, {
-      type: 'OBJECT', properties: { score: scoreSchema, reason: { type: 'STRING' } }, required: ['score', 'reason']
-    }])), required: metricNames },
-    strengths: stringsSchema, improvements: stringsSchema,
-    details: { type: 'OBJECT', properties: Object.fromEntries(detailNames.map(name => [name, { type: 'STRING' }])), required: detailNames },
-    nextExercise: { type: 'STRING' }, coachNotes: { type: 'STRING' }
-  },
-  required: ['overallScore', 'metrics', 'strengths', 'improvements', 'details', 'nextExercise', 'coachNotes']
-};
-function validAnalysis(value) {
-  const score = n => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 100;
-  return value && score(value.overallScore) && metricNames.every(name =>
-    score(value.metrics?.[name]?.score) && typeof value.metrics[name].reason === 'string') &&
-    ['strengths', 'improvements'].every(name => Array.isArray(value[name]) && value[name].every(s => typeof s === 'string')) &&
-    detailNames.every(name => typeof value.details?.[name] === 'string') &&
-    typeof value.nextExercise === 'string' && typeof value.coachNotes === 'string';
-}
-function createApp({ apiKey = process.env.GEMINI_API_KEY, model = process.env.GEMINI_MODEL || 'gemini-3.5-flash', fetchImpl = fetch } = {}) {
+const { responseSchema, validAnalysis } = require('./analysisContract.cjs');
+function createApp({ apiKey = process.env.GEMINI_API_KEY, model = process.env.GEMINI_MODEL || 'gemini-3.5-flash', fetchImpl = fetch, publicDeployment = false, allowedOrigins = process.env.CLIENT_ORIGIN || 'http://localhost:5173' } = {}) {
   const app = express();
   const configured = !!apiKey && !apiKey.startsWith('your_');
-  app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
+  app.use(cors({ origin: allowedOrigins }));
+  if (publicDeployment) {
+    // Firebase pre-parses requests before Express, bypassing parser size limits.
+    // Keep a small shared budget for the two operations that consume AI quota.
+    let windowStarted = Date.now();
+    let requests = 0;
+    app.post(['/api/transcribe', '/api/analyze'], (req, res, next) => {
+      const isAudio = /^\/api\/transcribe\/?$/i.test(req.path);
+      const limit = isAudio ? 12 * 1024 * 1024 : 64 * 1024;
+      if (Buffer.isBuffer(req.rawBody) && req.rawBody.length > limit) {
+        return res.status(413).json({ error: isAudio ? 'Recording is too large. Record a shorter session (under 12 MB).' : 'Transcript is too large.' });
+      }
+      const now = Date.now();
+      if (now - windowStarted >= 60000) { windowStarted = now; requests = 0; }
+      if (requests >= 20) {
+        res.set('Retry-After', String(Math.max(1, Math.ceil((60000 - (now - windowStarted)) / 1000))));
+        return res.status(429).json({ error: 'The app is busy. Please wait a minute, then retry. Your recording or transcript is still available.' });
+      }
+      requests++;
+      next();
+    });
+  }
   app.post('/api/transcribe', express.raw({ type: 'audio/*', limit: '12mb' }), async (req, res) => {
     const mimeType = (req.headers['content-type'] || '').split(';')[0].trim();
     if (!['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/mpeg'].includes(mimeType) || !Buffer.isBuffer(req.body) || !req.body.length) {
       return res.status(400).json({ error: 'Provide a non-empty audio recording in WebM, MP4, Ogg, WAV or MP3 format.' });
+    }
+    if (publicDeployment && req.body.length > 12 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Recording is too large. Record a shorter session (under 12 MB).' });
     }
     if (!configured) return res.status(503).json({ error: 'AI is not configured. Add GEMINI_API_KEY to server/.env and restart the backend.' });
     try {
@@ -114,3 +114,4 @@ if (require.main === module) {
   createApp().listen(port, '127.0.0.1', () => console.log(`Server running at http://localhost:${port}`));
 }
 module.exports = { createApp, validAnalysis };
+

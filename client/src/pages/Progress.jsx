@@ -44,7 +44,7 @@ export default function Progress() {
         count++;
       }
     });
-    return count > 0 ? Math.round(sum / count) : 0;
+    return count > 0 ? Math.round(sum / count) : null;
   };
 
   const pacingAvg = getMetricAvg('structure');
@@ -86,7 +86,7 @@ export default function Progress() {
           <div className="flex items-end h-48 gap-2 mt-4">
             {recentSessions.map((session, i) => (
               <div key={session.id || i} className="flex-1 flex flex-col items-center group relative">
-                <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 px-2 py-1 rounded text-xs text-white">
+                <div className="mb-2 text-sm text-white">
                   {session.overallScore}
                 </div>
                 <div 
@@ -115,7 +115,7 @@ export default function Progress() {
               <div key={skill.label}>
                 <div className="flex justify-between text-sm mb-1">
                   <span className="text-gray-300">{skill.label}</span>
-                  <span className="text-white font-bold">{skill.val || 0}</span>
+                  <span className="text-white font-bold">{skill.val ?? '—'}</span>
                 </div>
                 <div className="w-full bg-gray-800 rounded-full h-2">
                   <div 

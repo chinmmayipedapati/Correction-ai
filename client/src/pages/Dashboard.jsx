@@ -44,7 +44,7 @@ export default function Dashboard() {
         </div>
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 shadow-sm">
           <div className="text-gray-400 text-sm mb-1">Average Score</div>
-          <div className="text-3xl font-bold text-emerald-400">{averageScore || '-'}</div>
+          <div className="text-3xl font-bold text-emerald-400">{sessions.length ? averageScore : '-'}</div>
         </div>
       </section>
 

@@ -1,10 +1,21 @@
 export const SESSIONS_KEY = 'speakup_sessions';
+function safeAnalysis(analysis = {}) {
+  const strings = value => Array.isArray(value) ? value.filter(item => typeof item === 'string') : [];
+  return {
+    strengths: strings(analysis?.strengths), improvements: strings(analysis?.improvements),
+    metrics: Object.fromEntries(Object.entries(analysis?.metrics || {}).filter(([, value]) => value && Number.isFinite(value.score) && value.score >= 0 && value.score <= 100 && typeof value.reason === 'string')),
+    details: Object.fromEntries(Object.entries(analysis?.details || {}).filter(([, value]) => typeof value === 'string')),
+    nextExercise: typeof analysis?.nextExercise === 'string' ? analysis.nextExercise : '',
+    coachNotes: typeof analysis?.coachNotes === 'string' ? analysis.coachNotes : ''
+  };
+}
 export function readSessions(storage) {
   try {
     const parsed = JSON.parse(storage.getItem(SESSIONS_KEY) || '[]');
     return Array.isArray(parsed) ? parsed.filter(s => s && typeof s.id === 'string' &&
       typeof s.transcript === 'string' && Number.isFinite(s.duration) && s.duration >= 0 &&
-      Number.isFinite(s.overallScore) && !Number.isNaN(Date.parse(s.date))) : [];
+      Number.isFinite(s.overallScore) && s.overallScore >= 0 && s.overallScore <= 100 && !Number.isNaN(Date.parse(s.date)))
+      .map(s => ({ ...s, duration: Math.round(s.duration), context: typeof s.context === 'string' ? s.context : '', analysis: safeAnalysis(s.analysis) })) : [];
   } catch { return []; }
 }
 export function deriveProfile(sessions, now = new Date()) {

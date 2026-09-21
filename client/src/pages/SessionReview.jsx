@@ -2,6 +2,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import useSessionStore from '../hooks/useSessionStore';
 import ScoreCard from '../components/ScoreCard';
 import TranscriptViewer from '../components/TranscriptViewer';
+import { downloadReview } from '../utils/reviewExport';
 
 export default function SessionReview() {
   const { id } = useParams();
@@ -33,16 +34,18 @@ export default function SessionReview() {
   return (
     <div className="max-w-5xl mx-auto space-y-10 pb-20 animate-fade-in">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Session Review</h1>
           <p className="text-gray-400">
             {new Date(date).toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 
             <span className="mx-2">•</span> 
-            {Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')} min
+            {duration ? `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')} min` : 'Duration not supplied'}
           </p>
+          <p className="mt-2 text-emerald-400">{session.context || 'General Practice'}</p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-3">
+          <button onClick={() => downloadReview(session)} className="px-4 py-2 rounded-lg border border-gray-700 text-emerald-300 hover:bg-gray-800">Download review</button>
           <Link to="/" className="px-4 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors">
             Dashboard
           </Link>
@@ -85,11 +88,11 @@ export default function SessionReview() {
                 What Worked
               </h3>
               <ul className="space-y-2">
-                {analysis?.strengths?.map((strength, i) => (
+                {analysis?.strengths?.length ? analysis.strengths.map((strength, i) => (
                   <li key={i} className="text-gray-300 flex items-start gap-2">
                     <span className="text-emerald-500 mt-1">•</span> {strength}
                   </li>
-                )) || <li className="text-gray-500 italic">No specific strengths recorded.</li>}
+                )) : <li className="text-gray-500 italic">No specific strengths recorded.</li>}
               </ul>
             </div>
             
@@ -99,11 +102,11 @@ export default function SessionReview() {
                 Opportunities
               </h3>
               <ul className="space-y-2">
-                {analysis?.improvements?.map((imp, i) => (
+                {analysis?.improvements?.length ? analysis.improvements.map((imp, i) => (
                   <li key={i} className="text-gray-300 flex items-start gap-2">
                     <span className="text-amber-500 mt-1">•</span> {imp}
                   </li>
-                )) || <li className="text-gray-500 italic">No specific improvements recorded.</li>}
+                )) : <li className="text-gray-500 italic">No specific improvements recorded.</li>}
               </ul>
             </div>
           </div>
@@ -113,7 +116,7 @@ export default function SessionReview() {
       {/* Metric Breakdown Grid */}
       <div>
         <h2 className="text-xl font-bold text-white mb-6">Detailed Metrics</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {Object.entries(metrics).map(([key, data]) => (
             <div key={key} className="group relative">
               <ScoreCard 
@@ -121,9 +124,7 @@ export default function SessionReview() {
                 score={data.score} 
                 color={getScoreColor(data.score)}
               />
-              <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity bottom-full left-0 right-0 mb-2 p-2 bg-gray-800 text-xs text-gray-200 rounded z-10 pointer-events-none shadow-xl border border-gray-700">
-                {data.reason}
-              </div>
+              <p className="mt-3 px-1 text-sm leading-relaxed text-gray-300">{data.reason}</p>
             </div>
           ))}
         </div>
